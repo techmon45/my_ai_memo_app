@@ -1,0 +1,22 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# 🧩 Project Overview
+project.name = AI Memo App (MCP + WebUI)
+project.description = A web app that summarizes, tags, and organizes user notes using AI
+project.author = {Your Name}
+project.created = 2025-07-20
+
+# 🛠️ Technology Stack
+stack.backend = Python, MCP, FastAPI
+stack.frontend = Streamlit  # or Flask / React
+stack.database = JSON (initial), SQLite (future)
+stack.env = venv
+stack.version_control = git
+
+# 📂 Directory Structure
+file.backend = src/backend/
+file.frontend = src/frontend/
+file.config = .cursor/*.rule

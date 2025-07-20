@@ -1,0 +1,34 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+# 🧠 Development Workflow
+
+# Workflow phases
+workflow.steps = init -> develop -> test -> review -> release
+
+# MCP Agent definitions
+agent.summarizer = src/backend/agents/summarizer.py
+agent.tagger = src/backend/agents/tagger.py
+agent.input_checker = src/backend/agents/input_checker.py
+agent.suggestor = src/backend/agents/suggestor.py  # optional
+agent.formatter = src/backend/agents/formatter.py
+agent.storage = src/backend/agents/note_storage.py
+
+# MCP invocation pattern
+mcp.call_pattern = mcp.invoke(agent_name, input_data)
+
+# ⚙️ API conventions
+api.prefix = /api/v1
+api.timeout = 30s
+api.max_payload_size = 1MB
+
+# 🧪 Testing
+test.framework = pytest
+test.coverage_goal = 80%
+
+# 🔄 CI/CD (GitHub Actions example)
+ci.tool = github-actions
+ci.workflow_file = .github/workflows/ci.yml
+ci.run_on = [push, pull_request]

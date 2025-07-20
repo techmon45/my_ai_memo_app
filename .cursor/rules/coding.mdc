@@ -1,0 +1,27 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+# 👨‍💻 Coding Standards
+
+# Python (with type annotations)
+python.style = black + flake8
+python.indent = 4
+python.max_line_length = 88
+python.type_hints = true
+
+# JSON
+json.indent = 2
+json.sort_keys = true
+
+# Frontend (Streamlit/React)
+frontend.indent = 2
+frontend.max_line_length = 100
+
+# 🔧 Git commit message convention
+commit.header_pattern = ^(feat|fix|docs|refactor|style|test|chore)\([a-z_]+\): .{1,50}$
+commit.body_wrap = 72
+
+# 🚩 Branch naming convention
+branch.pattern = ^(feature|bugfix|hotfix)\/[a-z0-9\-]+$

@@ -1,0 +1,40 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+# 🎨 UI Formatting Guidelines
+
+# Layout
+ui.layout = single_column
+ui.spacing = 16px
+
+# Typography
+ui.font.default = system-ui, sans-serif
+ui.font.size.base = 16px
+ui.heading.sizes = {h1:24px, h2:20px, h3:18px}
+ui.line_height = 1.5
+
+# Color & Accessibility (WCAG AA compliant)
+ui.color.background = #FFFFFF
+ui.color.primary = #0055AA
+ui.color.text = #333333
+ui.contrast_ratio_text = ≥4.5  # text-to-background
+ui.contrast_ratio_ui = ≥3  # UI components non-text contrast :contentReference[oaicite:1]{index=1}
+
+# Interactive Elements
+ui.button.background = ui.color.primary
+ui.button.color = #FFFFFF
+ui.button.states = {default, hover, active, disabled}
+ui.input.border = 1px solid #CCCCCC
+ui.input.padding = 8px
+
+# Form Design
+ui.form.best_practices = labels_outside, inline_validation, concise_fields
+
+# Components & Consistency
+ui.components = {button, input_field, tag_chip, note_card}
+ui.reuse_components = true
+
+# Documentation
+ui.doc = include code_snippets, accessibility_notes, usage_examples

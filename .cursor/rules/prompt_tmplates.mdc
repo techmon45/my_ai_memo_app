@@ -1,0 +1,44 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# 🎯 Prompt Template Guidelines
+
+# Structure
+prompt.separator = ###
+prompt.use_delimiters = true  # Clearly separate instructions and input
+prompt.instruction_position = beginning
+
+# Clarity & Precision
+prompt.be_specific = true  # Specify tone, length, format
+prompt.specify_format = true  # Explicit output format, with examples
+prompt.include_examples = true  # Provide example input/output
+
+# Role & Guidance
+prompt.assign_role = true  # e.g., "You are a professional summarizer."
+prompt.step_by_step = true  # Encourage structured reasoning
+
+# Readability
+prompt.avoid_jargon = true  # Favor plain language
+prompt.quote_sources = true  # Ask model to cite info when relevant
+
+# Summary template example
+template.summarizer = """
+###
+You are a professional summarizer.
+Summarize the following user note into 2–3 bullet points, each ≤ 15 words.
+Text:
+\"\"\"{user_note}\"\"\"
+###
+"""
+
+# Tagging template example
+template.tagger = """
+###
+You are a metadata extractor.
+From the note below, list up to 5 relevant tags.
+Note:
+\"\"\"{user_note}\"\"\"
+###
+"""
