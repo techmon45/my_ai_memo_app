@@ -9,11 +9,12 @@ AIを活用したメモ帳アプリケーションです。メモの作成時に
 - 🏷️ **AI自動タグ付け**: 内容に基づいて関連タグを自動生成
 - 🔍 **検索機能**: タイトル、内容、タグでの検索
 - 📱 **MCP対応**: Model Context Protocolを使用したAI連携
+- 🌐 **Web UI**: Streamlitを使用した美しいWebインターフェース
 
 ## 🛠️ 技術スタック
 
 - **Backend**: Python, FastMCP, FastAPI
-- **Frontend**: Streamlit (予定)
+- **Frontend**: Streamlit
 - **AI**: OpenAI GPT-4o-mini
 - **Database**: SQLite (予定)
 - **Package Manager**: UV
@@ -48,11 +49,55 @@ cp .env.example .env
 # .envファイルを編集してOPENAI_API_KEYを設定
 ```
 
-### 4. MCPサーバーの起動
+### 4. アプリケーションの起動
+
+#### 方法1: 自動起動スクリプト（推奨）
 
 ```bash
-python server.py
+# すべてのサービスを自動で起動
+uv run python run_app.py
 ```
+
+#### 方法2: 手動起動
+
+```bash
+# 1. APIサーバーを起動
+uv run python src/backend/api_server.py
+
+# 2. 別のターミナルでStreamlitアプリを起動
+uv run streamlit run src/frontend/app.py
+```
+
+## 🌐 Web UIの使用方法
+
+### アクセス方法
+
+1. アプリケーションを起動後、ブラウザで `http://localhost:8501` にアクセス
+2. 美しいWebインターフェースでメモを管理
+
+### 主な機能
+
+#### 📝 メモの作成
+1. サイドバーの「➕ 新しいメモを作成」をクリック
+2. タイトルと内容を入力
+3. タグをカンマ区切りで入力（オプション）
+4. 「💾 保存」をクリック
+5. AIによる自動要約とタグ付けが実行されます
+
+#### ✏️ メモの編集
+1. サイドバーのメモ一覧から編集したいメモをクリック
+2. 内容を編集
+3. 「💾 更新」をクリック
+4. 「🤖 AI再処理」で要約とタグを再生成
+
+#### 🔍 メモの検索
+1. サイドバーの検索ボックスにキーワードを入力
+2. タイトル、内容、タグで検索
+3. 検索結果がリアルタイムで表示
+
+#### 🗑️ メモの削除
+1. メモ編集画面で「🗑️ 削除」をクリック
+2. 確認後、メモが削除されます
 
 ## 📁 プロジェクト構造
 
@@ -60,13 +105,16 @@ python server.py
 my_ai_memo_app/
 ├── src/
 │   ├── backend/          # バックエンド関連
+│   │   └── api_server.py # FastAPIサーバー
 │   ├── frontend/         # フロントエンド関連
+│   │   └── app.py        # Streamlitアプリ
 │   ├── models/           # データモデル
 │   │   └── memo.py
 │   └── utils/            # ユーティリティ
 │       └── ai_processor.py
 ├── .cursor/              # Cursor設定
 ├── server.py             # MCPサーバー
+├── run_app.py            # 起動スクリプト
 ├── pyproject.toml        # プロジェクト設定と依存関係
 ├── .env.example         # 環境変数テンプレート
 └── README.md
@@ -102,17 +150,18 @@ results = search_memos("プロジェクト")
 ## 🛠️ 開発コマンド
 
 ```bash
-# 依存関係のインストール
-uv sync
+# 依存関係の管理
+uv sync                    # 依存関係のインストール
+uv add package-name       # 新しいパッケージを追加
+uv add --dev package-name # 開発用パッケージを追加
+
+# アプリケーションの実行
+uv run python run_app.py           # 自動起動スクリプト
+uv run python src/backend/api_server.py  # APIサーバーのみ
+uv run streamlit run src/frontend/app.py # Streamlitアプリのみ
 
 # 開発用依存関係も含めてインストール
 uv sync --extra dev
-
-# 新しい依存関係を追加
-uv add package-name
-
-# 開発用依存関係を追加
-uv add --dev package-name
 
 # 仮想環境でスクリプトを実行
 uv run python server.py
@@ -120,16 +169,16 @@ uv run python server.py
 
 ## 🎯 次のステップ
 
-1. **Web UIの実装**: Streamlitを使用したフロントエンド
-2. **データベース統合**: SQLiteを使用した永続化
-3. **認証機能**: ユーザー管理システム
-4. **高度な検索**: 全文検索エンジンの統合
-5. **エクスポート機能**: PDF、Markdown形式でのエクスポート
+1. **データベース統合**: SQLiteを使用した永続化
+2. **認証機能**: ユーザー管理システム
+3. **高度な検索**: 全文検索エンジンの統合
+4. **エクスポート機能**: PDF、Markdown形式でのエクスポート
+5. **リアルタイム同期**: WebSocketを使用したリアルタイム更新
 
 ## 🤝 貢献
 
 プルリクエストやイシューの報告を歓迎します！
 
-## 📄 ライセンス
+## �� ライセンス
 
 MIT License 
