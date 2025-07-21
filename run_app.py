@@ -30,11 +30,20 @@ def start_api_server():
     try:
         # APIサーバーの起動
         api_process = subprocess.Popen([
-            sys.executable, "src/backend/api_server.py"
-        ], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            "python", "src/backend/api_server.py"
+        ], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding="cp932")
         
         # サーバーの起動を待つ
         time.sleep(3)
+        
+        # プロセスの状態を確認
+        if api_process.poll() is not None:
+            # プロセスが終了している場合、エラー出力を確認
+            stdout, stderr = api_process.communicate()
+            print(f"❌ APIサーバーが起動に失敗しました")
+            if stderr:
+                print(f"エラー詳細: {stderr}")  # decode不要
+            return None
         
         # ヘルスチェック
         import requests
@@ -44,10 +53,10 @@ def start_api_server():
                 print("✅ APIサーバーが正常に起動しました")
                 return api_process
             else:
-                print("❌ APIサーバーの起動に失敗しました")
+                print(f"❌ APIサーバーのヘルスチェックに失敗しました (ステータス: {response.status_code})")
                 return None
-        except requests.exceptions.RequestException:
-            print("❌ APIサーバーに接続できません")
+        except requests.exceptions.RequestException as e:
+            print(f"❌ APIサーバーに接続できません: {e}")
             return None
             
     except Exception as e:
@@ -60,7 +69,7 @@ def start_streamlit_app():
     try:
         # Streamlitアプリの起動
         streamlit_process = subprocess.Popen([
-            sys.executable, "-m", "streamlit", "run", "src/frontend/app.py",
+            "streamlit", "run", "src/frontend/app.py",
             "--server.port", "8501",
             "--server.address", "localhost"
         ])

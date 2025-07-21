@@ -22,51 +22,24 @@ AIを活用したメモ帳アプリケーションです。メモの作成時に
 
 ## 🚀 セットアップ
 
-### 1. UVのインストール
+### 1. Docker Desktopのインストール
+- [公式サイト](https://www.docker.com/products/docker-desktop/) からDocker Desktopをインストール
 
+### 2. .envファイルの作成
 ```bash
-# UVのインストール（まだインストールしていない場合）
-pip install uv
-```
-
-### 2. 環境の準備
-
-```bash
-# 仮想環境の作成とアクティベート
-uv venv
-
-# 依存関係のインストール
-uv sync
-```
-
-### 3. 環境変数の設定
-
-```bash
-# .envファイルを作成
 cp .env.example .env
-
-# OpenAI APIキーを設定
 # .envファイルを編集してOPENAI_API_KEYを設定
 ```
 
-### 4. アプリケーションの起動
-
-#### 方法1: 自動起動スクリプト（推奨）
-
+### 3. アプリケーションの起動
 ```bash
-# すべてのサービスを自動で起動
-uv run python run_app.py
+docker compose up --build -d
 ```
+- 初回は依存パッケージのビルドに数分かかります
+- コード修正はホスト側で即時反映されます
 
-#### 方法2: 手動起動
-
-```bash
-# 1. APIサーバーを起動
-uv run python src/backend/api_server.py
-
-# 2. 別のターミナルでStreamlitアプリを起動
-uv run streamlit run src/frontend/app.py
-```
+### 4. ブラウザでアクセス
+- [http://localhost:8501](http://localhost:8501) にアクセス
 
 ## 🌐 Web UIの使用方法
 

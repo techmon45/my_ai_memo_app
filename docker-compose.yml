@@ -1,0 +1,16 @@
+version: '3.8'
+services:
+  app:
+    build: .
+    container_name: ai-memo-app-dev
+    ports:
+      - "8000:8000"
+      - "8501:8501"
+    volumes:
+      - .:/app
+      - ./memo_app.db:/app/memo_app.db
+      - ./.env:/app/.env
+    environment:
+      - PYTHONUNBUFFERED=1
+      - PYTHONPATH=/app
+    command: ["python", "run_app.py"] 

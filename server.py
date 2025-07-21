@@ -5,15 +5,16 @@ from typing import List, Dict, Any
 from fastmcp import FastMCP
 from src.models.memo import Memo, MemoCreate, MemoUpdate
 from src.utils.ai_processor import AIProcessor
+from src.utils.database_manager import DatabaseManager
 
-# メモデータを保存する簡易ストレージ（後でSQLiteに移行予定）
-memo_storage: Dict[str, Memo] = {}
+# データベースマネージャーの初期化
+db_manager = DatabaseManager()
 
 # AIプロセッサーの初期化
 try:
     ai_processor = AIProcessor()
 except ValueError as e:
-    print(f"Warning: {e}")
+    # print(f"Warning: {e}")
     ai_processor = None
 
 mcp = FastMCP("AI Memo App")
@@ -24,8 +25,6 @@ def create_memo(title: str, content: str, tags: List[str] = None) -> Dict[str, A
     if tags is None:
         tags = []
     
-    memo_id = str(uuid.uuid4())
-    
     # AI処理
     ai_result = {"summary": None, "tags": []}
     if ai_processor:
@@ -34,142 +33,182 @@ def create_memo(title: str, content: str, tags: List[str] = None) -> Dict[str, A
             # AIが生成したタグとユーザーが指定したタグを結合
             all_tags = list(set(tags + ai_result["tags"]))
         except Exception as e:
-            print(f"AI processing error: {e}")
+            # print(f"AI processing error: {e}")
             all_tags = tags
     else:
         all_tags = tags
     
-    # メモオブジェクトの作成
-    memo = Memo(
-        id=memo_id,
-        title=title,
-        content=content,
-        summary=ai_result["summary"],
-        tags=all_tags,
-        created_at=datetime.now(),
-        updated_at=datetime.now()
-    )
-    
-    # ストレージに保存
-    memo_storage[memo_id] = memo
-    
-    return {
-        "id": memo_id,
-        "title": memo.title,
-        "content": memo.content,
-        "summary": memo.summary,
-        "tags": memo.tags,
-        "status": memo.status.value,
-        "created_at": memo.created_at.isoformat(),
-        "message": "メモが正常に作成されました"
-    }
+    try:
+        # データベースに保存
+        memo = db_manager.create_memo(
+            title=title,
+            content=content,
+            tags=all_tags,
+            summary=ai_result["summary"]
+        )
+        
+        return {
+            "id": memo["id"],
+            "title": memo["title"],
+            "content": memo["content"],
+            "summary": memo["summary"],
+            "tags": memo["tags"],
+            "status": memo["status"],
+            "created_at": memo["created_at"],
+            "message": "メモが正常に作成されました"
+        }
+    except Exception as e:
+        return {"error": f"メモの作成に失敗しました: {str(e)}"}
 
 @mcp.tool()
 def get_memo(memo_id: str) -> Dict[str, Any]:
     """指定されたIDのメモを取得する"""
-    if memo_id not in memo_storage:
-        return {"error": "メモが見つかりません"}
-    
-    memo = memo_storage[memo_id]
-    return {
-        "id": memo.id,
-        "title": memo.title,
-        "content": memo.content,
-        "summary": memo.summary,
-        "tags": memo.tags,
-        "status": memo.status.value,
-        "created_at": memo.created_at.isoformat(),
-        "updated_at": memo.updated_at.isoformat()
-    }
+    try:
+        memo = db_manager.get_memo(memo_id)
+        if not memo:
+            return {"error": "メモが見つかりません"}
+        
+        return {
+            "id": memo["id"],
+            "title": memo["title"],
+            "content": memo["content"],
+            "summary": memo["summary"],
+            "tags": memo["tags"],
+            "status": memo["status"],
+            "created_at": memo["created_at"],
+            "updated_at": memo["updated_at"]
+        }
+    except Exception as e:
+        return {"error": f"メモの取得に失敗しました: {str(e)}"}
 
 @mcp.tool()
-def list_memos() -> List[Dict[str, Any]]:
+def list_memos(limit: int = 100, offset: int = 0) -> List[Dict[str, Any]]:
     """すべてのメモをリストで取得する"""
-    return [
-        {
-            "id": memo.id,
-            "title": memo.title,
-            "summary": memo.summary,
-            "tags": memo.tags,
-            "status": memo.status.value,
-            "created_at": memo.created_at.isoformat()
-        }
-        for memo in memo_storage.values()
-    ]
+    try:
+        memos = db_manager.list_memos(limit=limit, offset=offset)
+        return [
+            {
+                "id": memo["id"],
+                "title": memo["title"],
+                "summary": memo["summary"],
+                "tags": memo["tags"],
+                "status": memo["status"],
+                "created_at": memo["created_at"]
+            }
+            for memo in memos
+        ]
+    except Exception as e:
+        return [{"error": f"メモ一覧の取得に失敗しました: {str(e)}"}]
 
 @mcp.tool()
 def update_memo(memo_id: str, title: str = None, content: str = None, tags: List[str] = None) -> Dict[str, Any]:
     """メモを更新する"""
-    if memo_id not in memo_storage:
-        return {"error": "メモが見つかりません"}
-    
-    memo = memo_storage[memo_id]
-    
-    # 更新するフィールドを設定
-    if title:
-        memo.title = title
-    if content:
-        memo.content = content
+    try:
         # 内容が変更された場合、AIで再処理
-        if ai_processor:
+        ai_result = {"summary": None, "tags": []}
+        if content and ai_processor:
             try:
                 ai_result = ai_processor.process_memo(content)
-                memo.summary = ai_result["summary"]
                 if tags is None:
                     tags = []
-                memo.tags = list(set(tags + ai_result["tags"]))
+                all_tags = list(set(tags + ai_result["tags"]))
             except Exception as e:
-                print(f"AI processing error: {e}")
-                if tags:
-                    memo.tags = tags
+                # print(f"AI processing error: {e}")
+                all_tags = tags if tags else []
         else:
-            if tags:
-                memo.tags = tags
-    elif tags:
-        memo.tags = tags
-    
-    memo.updated_at = datetime.now()
-    
-    return {
-        "id": memo.id,
-        "title": memo.title,
-        "content": memo.content,
-        "summary": memo.summary,
-        "tags": memo.tags,
-        "status": memo.status.value,
-        "updated_at": memo.updated_at.isoformat(),
-        "message": "メモが正常に更新されました"
-    }
+            all_tags = tags
+        
+        # データベースを更新
+        memo = db_manager.update_memo(
+            memo_id=memo_id,
+            title=title,
+            content=content,
+            tags=all_tags,
+            summary=ai_result["summary"] if content else None
+        )
+        
+        if not memo:
+            return {"error": "メモが見つかりません"}
+        
+        return {
+            "id": memo["id"],
+            "title": memo["title"],
+            "content": memo["content"],
+            "summary": memo["summary"],
+            "tags": memo["tags"],
+            "status": memo["status"],
+            "updated_at": memo["updated_at"],
+            "message": "メモが正常に更新されました"
+        }
+    except Exception as e:
+        return {"error": f"メモの更新に失敗しました: {str(e)}"}
 
 @mcp.tool()
 def delete_memo(memo_id: str) -> Dict[str, Any]:
     """メモを削除する"""
-    if memo_id not in memo_storage:
-        return {"error": "メモが見つかりません"}
-    
-    del memo_storage[memo_id]
-    return {"message": "メモが正常に削除されました"}
+    try:
+        success = db_manager.delete_memo(memo_id)
+        if success:
+            return {"message": "メモが正常に削除されました"}
+        else:
+            return {"error": "メモが見つかりません"}
+    except Exception as e:
+        return {"error": f"メモの削除に失敗しました: {str(e)}"}
 
 @mcp.tool()
-def search_memos(query: str) -> List[Dict[str, Any]]:
+def search_memos(query: str, limit: int = 50) -> List[Dict[str, Any]]:
     """メモを検索する（タイトル、内容、タグで検索）"""
-    results = []
-    query_lower = query.lower()
-    
-    for memo in memo_storage.values():
-        if (query_lower in memo.title.lower() or 
-            query_lower in memo.content.lower() or 
-            any(query_lower in tag.lower() for tag in memo.tags)):
-            results.append({
-                "id": memo.id,
-                "title": memo.title,
-                "summary": memo.summary,
-                "tags": memo.tags,
-                "status": memo.status.value,
-                "created_at": memo.created_at.isoformat()
-            })
-    
-    return results
+    try:
+        results = db_manager.search_memos(query=query, limit=limit)
+        return [
+            {
+                "id": memo["id"],
+                "title": memo["title"],
+                "summary": memo["summary"],
+                "tags": memo["tags"],
+                "status": memo["status"],
+                "created_at": memo["created_at"]
+            }
+            for memo in results
+        ]
+    except Exception as e:
+        return [{"error": f"メモの検索に失敗しました: {str(e)}"}]
+
+@mcp.tool()
+def get_memos_by_tag(tag_name: str, limit: int = 50) -> List[Dict[str, Any]]:
+    """指定されたタグでメモを検索する"""
+    try:
+        results = db_manager.get_memos_by_tag(tag_name=tag_name, limit=limit)
+        return [
+            {
+                "id": memo["id"],
+                "title": memo["title"],
+                "summary": memo["summary"],
+                "tags": memo["tags"],
+                "status": memo["status"],
+                "created_at": memo["created_at"]
+            }
+            for memo in results
+        ]
+    except Exception as e:
+        return [{"error": f"タグ検索に失敗しました: {str(e)}"}]
+
+@mcp.tool()
+def get_all_tags() -> List[str]:
+    """すべてのタグを取得する"""
+    try:
+        return db_manager.get_all_tags()
+    except Exception as e:
+        return [f"タグの取得に失敗しました: {str(e)}"]
+
+@mcp.tool()
+def get_memo_count() -> Dict[str, Any]:
+    """メモの総数を取得する"""
+    try:
+        count = db_manager.get_memo_count()
+        return {"count": count, "message": f"メモの総数: {count}件"}
+    except Exception as e:
+        return {"error": f"メモ数の取得に失敗しました: {str(e)}"}
 
 if __name__ == "__main__":
     mcp.run(transport="stdio")
