@@ -9,7 +9,6 @@ services:
     volumes:
       - .:/app
       - ./memo_app.db:/app/memo_app.db
-      - ./.env:/app/.env
     environment:
       - PYTHONUNBUFFERED=1
       - PYTHONPATH=/app
