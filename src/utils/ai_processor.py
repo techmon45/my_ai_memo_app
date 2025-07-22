@@ -2,8 +2,11 @@ import os
 import openai
 from typing import List, Dict, Any
 from dotenv import load_dotenv
+from pathlib import Path
 
-load_dotenv()
+# プロジェクトルートの .env を指定して読み込む
+ENV_PATH = Path(__file__).resolve().parent.parent.parent / ".env"
+load_dotenv(dotenv_path=ENV_PATH, override=False)
 
 class AIProcessor:
     def __init__(self):

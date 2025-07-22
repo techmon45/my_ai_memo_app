@@ -34,7 +34,7 @@ COPY --from=builder /usr/local/bin/streamlit /usr/local/bin/streamlit
 COPY . .
 
 # .envファイルをコピー（本番はsecretsで上書き推奨）
-COPY .env.example .env
+COPY .env .env
 
 # print文やバッファ詰まり対策: PYTHONUNBUFFERED=1
 ENV PYTHONUNBUFFERED=1

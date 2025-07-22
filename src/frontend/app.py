@@ -91,15 +91,16 @@ class MemoAPI:
         try:
             url = f"{self.base_url}{endpoint}"
             headers = {"Content-Type": "application/json"}
+            timeout = 15  # 秒
             
             if method == "GET":
-                response = requests.get(url, headers=headers)
+                response = requests.get(url, headers=headers, timeout=timeout)
             elif method == "POST":
-                response = requests.post(url, json=data, headers=headers)
+                response = requests.post(url, json=data, headers=headers, timeout=timeout)
             elif method == "PUT":
-                response = requests.put(url, json=data, headers=headers)
+                response = requests.put(url, json=data, headers=headers, timeout=timeout)
             elif method == "DELETE":
-                response = requests.delete(url, headers=headers)
+                response = requests.delete(url, headers=headers, timeout=timeout)
             else:
                 return {"error": f"Unsupported method: {method}"}
             
@@ -188,11 +189,15 @@ def main():
     # ヘッダー
     st.markdown('<h1 class="main-header">🤖 AI Memo App</h1>', unsafe_allow_html=True)
     
-    # APIサーバーの状態確認
-    health_check = api._make_request("GET", "/health")
-    if "error" in health_check:
-        st.error("⚠️ APIサーバーに接続できません。サーバーが起動しているか確認してください。")
-        st.info("💡 サーバーを起動するには: `uv run python src/backend/api_server.py`")
+    # APIサーバーの状態確認（タイムアウト付き）
+    try:
+        health_check = api._make_request("GET", "/health")
+        if "error" in health_check:
+            st.error("⚠️ APIサーバーに接続できません。サーバーが起動しているか確認してください。")
+            st.info("💡 サーバーを起動するには: `uv run python src/backend/api_server.py`")
+            return
+    except Exception as e:
+        st.error(f"⚠️ APIサーバーとの接続でエラーが発生しました: {e}")
         return
     
     # サイドバー
@@ -207,29 +212,35 @@ def main():
         
         st.divider()
         
-        # 統計情報
-        stats = api.get_stats()
-        if "count" in stats:
-            st.markdown(f"""
-            <div class="stats-card">
-                <h4>📊 統計</h4>
-                <p>メモ数: {stats['count']}件</p>
-            </div>
-            """, unsafe_allow_html=True)
+        # 統計情報（エラーハンドリング付き）
+        try:
+            stats = api.get_stats()
+            if "count" in stats:
+                st.markdown(f"""
+                <div class="stats-card">
+                    <h4>📊 統計</h4>
+                    <p>メモ数: {stats['count']}件</p>
+                </div>
+                """, unsafe_allow_html=True)
+        except Exception as e:
+            st.warning("統計情報の取得に失敗しました")
         
         st.divider()
         
-        # タグ一覧
+        # タグ一覧（エラーハンドリング付き）
         st.subheader("🏷️ タグ一覧")
-        tags = api.get_all_tags()
-        if tags:
-            for tag in tags:
-                if st.button(f"🏷️ {tag}", key=f"tag_{tag}", use_container_width=True):
-                    st.session_state.selected_tag = tag
-                    st.session_state.current_memo_id = None
-                    st.rerun()
-        else:
-            st.info("タグがありません")
+        try:
+            tags = api.get_all_tags()
+            if tags:
+                for tag in tags:
+                    if st.button(f"🏷️ {tag}", key=f"tag_{tag}", use_container_width=True):
+                        st.session_state.selected_tag = tag
+                        st.session_state.current_memo_id = None
+                        st.rerun()
+            else:
+                st.info("タグがありません")
+        except Exception as e:
+            st.warning("タグ一覧の取得に失敗しました")
         
         st.divider()
         
@@ -237,22 +248,28 @@ def main():
         st.subheader("🔍 検索")
         search_query = st.text_input("キーワードを入力", placeholder="タイトル、内容、タグで検索")
         if search_query:
-            search_results = api.search_memos(search_query)
-            st.write(f"検索結果: {len(search_results)}件")
+            try:
+                search_results = api.search_memos(search_query)
+                st.write(f"検索結果: {len(search_results)}件")
+            except Exception as e:
+                st.warning("検索に失敗しました")
         
         st.divider()
         
-        # メモ一覧
+        # メモ一覧（エラーハンドリング付き）
         st.subheader("📋 メモ一覧")
-        memos = api.list_memos()
-        if memos:
-            for memo in memos:
-                if st.button(f"📄 {memo['title'][:30]}...", key=f"list_{memo['id']}", use_container_width=True):
-                    st.session_state.current_memo_id = memo['id']
-                    st.session_state.selected_tag = None
-                    st.rerun()
-        else:
-            st.info("メモがありません")
+        try:
+            memos = api.list_memos()
+            if memos:
+                for memo in memos:
+                    if st.button(f"📄 {memo['title'][:30]}...", key=f"list_{memo['id']}", use_container_width=True):
+                        st.session_state.current_memo_id = memo['id']
+                        st.session_state.selected_tag = None
+                        st.rerun()
+            else:
+                st.info("メモがありません")
+        except Exception as e:
+            st.warning("メモ一覧の取得に失敗しました")
     
     # メインコンテンツ
     col1, col2 = st.columns([2, 1])

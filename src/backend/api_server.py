@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, Depends
+from fastapi import FastAPI, HTTPException, Depends, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List, Dict, Any, Optional
@@ -10,6 +10,8 @@ from datetime import datetime
 import uuid
 from contextlib import asynccontextmanager
 from src.utils.database_manager import DatabaseManager
+import select
+import time
 
 # データベースマネージャーの初期化
 db_manager = DatabaseManager()
@@ -35,7 +37,7 @@ class MCPServer:
             return False
     
     def send_request(self, method: str, params: list = None) -> Dict[str, Any]:
-        """MCPサーバーにリクエストを送信"""
+        """MCPサーバーにリクエストを送信（タイムアウト付き）"""
         if not self.server_process:
             if not self.start_server():
                 return {"error": "MCPサーバーの起動に失敗しました"}
@@ -51,12 +53,19 @@ class MCPServer:
             request_str = json.dumps(request) + "\n"
             self.server_process.stdin.write(request_str)
             self.server_process.stdin.flush()
-            response_line = self.server_process.stdout.readline()
-            if response_line:
-                response = json.loads(response_line.strip())
-                return response
-            else:
-                return {"error": "MCPサーバーからのレスポンスがありません"}
+            
+            # タイムアウト設定（10秒）
+            start_time = time.time()
+            while time.time() - start_time < 10:
+                # selectでstdoutにデータが来ているか確認（非ブロッキング）
+                ready, _, _ = select.select([self.server_process.stdout], [], [], 0.1)
+                if ready:
+                    response_line = self.server_process.stdout.readline()
+                    if response_line:
+                        response = json.loads(response_line.strip())
+                        return response
+            
+            return {"error": "MCPサーバーからのレスポンスがタイムアウトしました"}
         except Exception as e:
             return {"error": f"MCP通信エラー: {str(e)}"}
 
@@ -126,40 +135,61 @@ async def health_check():
     """ヘルスチェック"""
     return {"status": "healthy", "timestamp": datetime.now().isoformat()}
 
-@app.post("/memos")
-async def create_memo(memo: MemoCreate):
-    """メモを作成"""
+@app.get("/memos")
+async def list_memos(limit: int = 100, offset: int = 0):
+    """すべてのメモを取得（DB 直アクセス）"""
     try:
-        result = mcp_server.send_request("create_memo", [
-            memo.title,
-            memo.content,
-            memo.tags or []
-        ])
-        if "error" in result:
-            raise HTTPException(status_code=500, detail=result["error"])
-        return result.get("result", result)
+        memos = db_manager.list_memos(limit=limit, offset=offset)
+        return memos
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/memos")
-async def list_memos(limit: int = 100, offset: int = 0):
-    """すべてのメモを取得"""
+
+@app.get("/tags")
+async def get_all_tags():
+    """すべてのタグを取得（DB 直アクセス）"""
     try:
-        result = mcp_server.send_request("list_memos", [limit, offset])
-        if "error" in result:
-            raise HTTPException(status_code=500, detail=result["error"])
-        return result.get("result", result)
+        return db_manager.get_all_tags()
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/stats")
+async def get_stats():
+    """統計情報を取得（DB 直アクセス）"""
+    try:
+        count = db_manager.get_memo_count()
+        return {"count": count}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/memos")
+async def create_memo(memo: MemoCreate, bg: BackgroundTasks):
+    """メモ作成 → 先に DB 保存、AI はバックグラウンド"""
+    # 1) 先にプレーン保存して ID を返す
+    saved = db_manager.create_memo(
+        title=memo.title,
+        content=memo.content,
+        tags=memo.tags or [],
+        summary=None
+    )
+    # 2) AI 要約 + タグ生成を裏で実行
+    bg.add_task(
+        mcp_server.send_request,
+        "update_memo",        # AI 再計算用ツールを流用
+        [saved["id"], None, saved["content"], saved["tags"]]
+    )
+    return saved
 
 @app.get("/memos/{memo_id}")
 async def get_memo(memo_id: str):
-    """指定されたメモを取得"""
+    """指定されたメモを取得（DB 直アクセス）"""
     try:
-        result = mcp_server.send_request("get_memo", [memo_id])
-        if "error" in result:
-            raise HTTPException(status_code=404, detail=result["error"])
-        return result.get("result", result)
+        memo = db_manager.get_memo(memo_id)
+        if not memo:
+            raise HTTPException(status_code=404, detail="メモが見つかりません")
+        return memo
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -189,67 +219,37 @@ async def update_memo(memo_id: str, memo: MemoUpdate):
 
 @app.delete("/memos/{memo_id}")
 async def delete_memo(memo_id: str):
-    """メモを削除"""
+    """メモを削除（DB 直アクセス）"""
     try:
-        result = mcp_server.send_request("delete_memo", [memo_id])
-        if "error" in result:
-            raise HTTPException(status_code=404, detail=result["error"])
-        return result.get("result", result)
+        success = db_manager.delete_memo(memo_id)
+        if success:
+            return {"message": "メモが正常に削除されました"}
+        else:
+            raise HTTPException(status_code=404, detail="メモが見つかりません")
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/memos/search")
 async def search_memos(search_query: SearchQuery):
-    """メモを検索"""
+    """メモを検索（DB 直アクセス）"""
     try:
-        result = mcp_server.send_request("search_memos", [search_query.query, search_query.limit])
-        if "error" in result:
-            raise HTTPException(status_code=500, detail=result["error"])
-        return result.get("result", result)
+        return db_manager.search_memos(query=search_query.query, limit=search_query.limit)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/memos/search/{query}")
 async def search_memos_get(query: str, limit: int = 50):
-    """メモを検索（GET版）"""
+    """メモを検索（GET版, DB 直アクセス）"""
     try:
-        result = mcp_server.send_request("search_memos", [query, limit])
-        if "error" in result:
-            raise HTTPException(status_code=500, detail=result["error"])
-        return result.get("result", result)
+        return db_manager.search_memos(query=query, limit=limit)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/memos/tag/{tag_name}")
 async def get_memos_by_tag(tag_name: str, limit: int = 50):
-    """タグでメモを検索"""
+    """タグでメモを検索（DB 直アクセス）"""
     try:
-        result = mcp_server.send_request("get_memos_by_tag", [tag_name, limit])
-        if "error" in result:
-            raise HTTPException(status_code=500, detail=result["error"])
-        return result.get("result", result)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.get("/tags")
-async def get_all_tags():
-    """すべてのタグを取得"""
-    try:
-        result = mcp_server.send_request("get_all_tags", [])
-        if "error" in result:
-            raise HTTPException(status_code=500, detail=result["error"])
-        return result.get("result", result)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.get("/stats")
-async def get_stats():
-    """統計情報を取得"""
-    try:
-        result = mcp_server.send_request("get_memo_count", [])
-        if "error" in result:
-            raise HTTPException(status_code=500, detail=result["error"])
-        return result.get("result", result)
+        return db_manager.get_memos_by_tag(tag_name=tag_name, limit=limit)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
