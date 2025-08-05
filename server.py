@@ -10,24 +10,34 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 # プロジェクトルートの .env を指定して読み込む
-ENV_PATH = Path(__file__).resolve().parent.parent.parent / ".env"
+ENV_PATH = Path(__file__).resolve().parent / ".env"
 load_dotenv(dotenv_path=ENV_PATH, override=False)
 
 # データベースマネージャーの初期化
 db_manager = DatabaseManager()
 
 # AIプロセッサーの初期化
-try:
-    ai_processor = AIProcessor()
-except ValueError as e:
-    print(f"⚠️  AIProcessor init skipped: {e}")
-    ai_processor = None
+ai_processor = AIProcessor()
 
 mcp = FastMCP("AI Memo App")
+
+# プレビュー用ツール（要約 + タグ）
+# preview_memo ツールにデバッグログを追加
+@mcp.tool()
+def preview_memo(content: str) -> Dict[str, Any]:
+    """メモ内容を AI で要約し、タグ候補を返す (DB 変更なし)"""
+    if not ai_processor:
+        return {"error": "AIProcessor 未初期化"}
+    try:
+        result = ai_processor.process_memo(content)
+        return result
+    except Exception as e:
+        return {"error": f"AI 処理に失敗しました: {str(e)}"}
 
 @mcp.tool()
 def create_memo(title: str, content: str, tags: List[str] = None) -> Dict[str, Any]:
     """新しいメモを作成し、AIで要約とタグを生成する"""
+    
     if tags is None:
         tags = []
     
@@ -36,11 +46,9 @@ def create_memo(title: str, content: str, tags: List[str] = None) -> Dict[str, A
     if ai_processor:
         try:
             ai_result = ai_processor.process_memo(content)
-            print("📝 AI result:", ai_result)          # 成功ログ
             # AIが生成したタグとユーザーが指定したタグを結合
             all_tags = list(set(tags + ai_result["tags"]))
         except Exception as e:
-            print("❌ AI processing error:", e)        # 失敗ログ
             all_tags = tags
     else:
         all_tags = tags
@@ -70,6 +78,7 @@ def create_memo(title: str, content: str, tags: List[str] = None) -> Dict[str, A
 @mcp.tool()
 def get_memo(memo_id: str) -> Dict[str, Any]:
     """指定されたIDのメモを取得する"""
+    
     try:
         memo = db_manager.get_memo(memo_id)
         if not memo:
@@ -132,18 +141,17 @@ def get_memo(memo_id: str) -> Dict[str, Any]:
 @mcp.tool()
 def update_memo(memo_id: str, title: str = None, content: str = None, tags: List[str] = None) -> Dict[str, Any]:
     """メモを更新する"""
+    
     try:
         # 内容が変更された場合、AIで再処理
         ai_result = {"summary": None, "tags": []}
         if content and ai_processor:
             try:
                 ai_result = ai_processor.process_memo(content)
-                print("📝 AI result:", ai_result)          # 成功ログ
                 if tags is None:
                     tags = []
                 all_tags = list(set(tags + ai_result["tags"]))
             except Exception as e:
-                print("❌ AI processing error:", e)        # 失敗ログ
                 all_tags = tags if tags else []
         else:
             all_tags = tags
@@ -176,6 +184,7 @@ def update_memo(memo_id: str, title: str = None, content: str = None, tags: List
 # @mcp.tool()  # WRITE 系だが現状 FastAPI 直呼び出しに移行したため無効化（再利用時に戻す）
 def delete_memo(memo_id: str) -> Dict[str, Any]:
     """メモを削除する"""
+    
     try:
         success = db_manager.delete_memo(memo_id)
         if success:

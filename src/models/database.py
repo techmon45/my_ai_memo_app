@@ -71,8 +71,9 @@ def init_db():
     """データベースを初期化"""
     Base.metadata.create_all(bind=engine)
 
+# FastAPI専用: Dependency Injection用のジェネレーター関数
 def get_db():
-    """データベースセッションを取得"""
+    """FastAPI用データベースセッション取得（Dependency Injection用）"""
     db = SessionLocal()
     try:
         yield db

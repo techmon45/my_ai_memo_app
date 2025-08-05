@@ -180,6 +180,11 @@ class MemoAPI:
         result = self._make_request("GET", "/stats")
         return result
 
+    # --- AI プレビュー ---
+    def ai_preview(self, content: str) -> Dict[str, Any]:
+        data = {"content": content}
+        return self._make_request("POST", "/ai/preview", data)
+
 # APIインスタンスの作成
 api = MemoAPI()
 
@@ -289,8 +294,47 @@ def main():
                     submitted = st.form_submit_button("💾 保存", use_container_width=True)
                 with col2:
                     if st.form_submit_button("🤖 AI処理", use_container_width=True):
-                        # AI処理のプレビュー
-                        st.info("AIによる要約とタグ付けが実行されます")
+                        if content:
+                            ai_res = api.ai_preview(content)
+                            if "error" in ai_res:
+                                st.error(ai_res["error"])
+                            else:
+                                # AI処理結果をセッション状態に保存
+                                st.session_state.ai_result = ai_res
+                                st.success("AI 処理完了！下記の「適用」ボタンで反映できます")
+                        else:
+                            st.warning("内容を入力してください")
+                
+                # AI処理結果の表示と適用
+                if 'ai_result' in st.session_state and st.session_state.ai_result:
+                    ai_res = st.session_state.ai_result
+                    st.markdown("### 🤖 AI処理結果")
+                    st.write("**要約:**")
+                    st.write(ai_res.get("summary", "(なし)"))
+                    st.write("**タグ候補:** " + ", ".join(ai_res.get("tags", [])))
+                    
+                    col_apply1, col_apply2 = st.columns(2)
+                    with col_apply1:
+                        if st.form_submit_button("📝 適用して保存", use_container_width=True):
+                            if title and content:
+                                # AI結果を適用したタグリストを作成
+                                manual_tags = [tag.strip() for tag in tags_input.split(",") if tag.strip()] if tags_input else []
+                                combined_tags = list(set(manual_tags + ai_res.get("tags", [])))
+                                
+                                result = api.create_memo(title, content, combined_tags)
+                                if "error" in result:
+                                    st.error(f"エラー: {result['error']}")
+                                else:
+                                    st.success("AI結果を適用してメモが作成されました！")
+                                    st.session_state.current_memo_id = result["id"]
+                                    st.session_state.ai_result = None  # 結果をクリア
+                                    st.rerun()
+                            else:
+                                st.warning("タイトルと内容を入力してください")
+                    with col_apply2:
+                        if st.form_submit_button("🗑️ AI結果をクリア", use_container_width=True):
+                            st.session_state.ai_result = None
+                            st.rerun()
                 
                 if submitted and title and content:
                     tags = [tag.strip() for tag in tags_input.split(",") if tag.strip()] if tags_input else []
@@ -345,18 +389,51 @@ def main():
                     
                     with col2:
                         if st.form_submit_button("🤖 AI再処理", use_container_width=True):
-                            st.info("AIによる要約とタグ付けが再実行されます")
+                            ai_res = api.ai_preview(content)
+                            if "error" in ai_res:
+                                st.error(ai_res["error"])
+                            else:
+                                # AI再処理結果をセッション状態に保存
+                                st.session_state.ai_edit_result = ai_res
+                                st.success("AI 再処理完了！下記の「適用」ボタンで反映できます")
+                
+                # AI再処理結果の表示と適用（編集画面用）
+                if 'ai_edit_result' in st.session_state and st.session_state.ai_edit_result:
+                    ai_res = st.session_state.ai_edit_result
+                    st.markdown("### 🤖 AI再処理結果")
+                    st.write("**要約:**")
+                    st.write(ai_res.get("summary", "(なし)"))
+                    st.write("**タグ候補:** " + ", ".join(ai_res.get("tags", [])))
                     
-                    with col3:
-                        if st.form_submit_button("🗑️ 削除", use_container_width=True):
-                            result = api.delete_memo(memo["id"])
+                    col_edit1, col_edit2 = st.columns(2)
+                    with col_edit1:
+                        if st.form_submit_button("📝 AI結果を適用して更新", key="apply_edit", use_container_width=True):
+                            # AI結果を適用したタグリストを作成
+                            manual_tags = [tag.strip() for tag in tags_input.split(",") if tag.strip()] if tags_input else []
+                            combined_tags = list(set(manual_tags + ai_res.get("tags", [])))
                             
+                            result = api.update_memo(memo["id"], title, content, combined_tags)
                             if "error" in result:
                                 st.error(f"エラー: {result['error']}")
                             else:
-                                st.session_state.current_memo_id = None
-                                st.success("メモが削除されました！")
+                                st.success("AI結果を適用してメモが更新されました！")
+                                st.session_state.ai_edit_result = None  # 結果をクリア
                                 st.rerun()
+                    
+                    with col_edit2:
+                        if st.form_submit_button("🗑️ 結果をクリア", key="clear_edit", use_container_width=True):
+                            st.session_state.ai_edit_result = None
+                            st.rerun()
+                
+                # 削除ボタン（フォーム外に配置）
+                if st.button("🗑️ メモを削除", key="delete_memo", use_container_width=True):
+                    result = api.delete_memo(memo["id"])
+                    if "error" in result:
+                        st.error(f"エラー: {result['error']}")
+                    else:
+                        st.session_state.current_memo_id = None
+                        st.success("メモが削除されました！")
+                        st.rerun()
             else:
                 st.error("メモが見つかりません")
                 st.session_state.current_memo_id = None

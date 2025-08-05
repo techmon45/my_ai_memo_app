@@ -20,6 +20,125 @@ AIを活用したメモ帳アプリケーションです。メモの作成時に
 - **Package Manager**: UV
 - **Environment**: venv
 
+## 🏗️ アーキテクチャ
+
+### システム全体構成
+
+```mermaid
+graph TB
+    subgraph "Client Layer"
+        CDesktop[Claude Desktop]
+        Browser[Web Browser]
+    end
+    
+    subgraph "Application Layer"
+        MCPServer[MCP Server<br/>server.py]
+        FastAPI[FastAPI Server<br/>api_server.py]
+        Streamlit[Streamlit UI<br/>app.py]
+    end
+    
+    subgraph "Business Logic Layer"
+        DBManager[DatabaseManager<br/>database_manager.py]
+        AIProcessor[AIProcessor<br/>ai_processor.py]
+    end
+    
+    subgraph "Data Layer"
+        SQLite[(SQLite Database)]
+        OpenAI[OpenAI API<br/>GPT-4o-mini]
+    end
+    
+    %% Connections
+    CDesktop -.->|MCP Protocol| MCPServer
+    Browser -->|HTTP| Streamlit
+    Browser -->|HTTP API| FastAPI
+    
+    MCPServer --> DBManager
+    MCPServer --> AIProcessor
+    FastAPI --> DBManager
+    FastAPI --> AIProcessor
+    Streamlit -->|API Calls| FastAPI
+    
+    DBManager --> SQLite
+    AIProcessor --> OpenAI
+    
+    %% Styling
+    classDef clientLayer fill:#e1f5fe
+    classDef appLayer fill:#f3e5f5
+    classDef businessLayer fill:#e8f5e8
+    classDef dataLayer fill:#fff3e0
+    
+    class CDesktop,Browser clientLayer
+    class MCPServer,FastAPI,Streamlit appLayer
+    class DBManager,AIProcessor businessLayer
+    class SQLite,OpenAI dataLayer
+```
+
+### データフロー
+
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant S as Streamlit UI
+    participant A as FastAPI Server
+    participant AI as AIProcessor
+    participant DB as DatabaseManager
+    participant O as OpenAI API
+    participant SQLite as SQLite DB
+    
+    U->>S: メモ内容を入力
+    S->>A: POST /ai/preview
+    A->>AI: process_memo()
+    AI->>O: GPT-4o-mini API Call
+    O-->>AI: 要約とタグを返却
+    AI-->>A: AI処理結果
+    A-->>S: プレビュー結果
+    S-->>U: AI結果を表示
+    
+    U->>S: 保存ボタンクリック
+    S->>A: POST /memos
+    A->>AI: process_memo()
+    AI->>O: GPT-4o-mini API Call
+    O-->>AI: 要約とタグを返却
+    A->>DB: create_memo()
+    DB->>SQLite: INSERT メモデータ
+    SQLite-->>DB: 保存完了
+    DB-->>A: 作成されたメモ
+    A-->>S: 保存結果
+    S-->>U: 保存完了メッセージ
+```
+
+### MCP (Model Context Protocol) 統合
+
+```mermaid
+graph LR
+    subgraph "External Tools"
+        Claude[Claude Desktop]
+        Other[Other MCP Clients]
+    end
+    
+    subgraph "MCP Server"
+        Tools[MCP Tools<br/>- create_memo<br/>- get_memo<br/>- search_memos<br/>- update_memo<br/>- delete_memo]
+    end
+    
+    subgraph "Core Services"
+        DB[DatabaseManager]
+        AI[AIProcessor]
+    end
+    
+    Claude <-->|MCP Protocol| Tools
+    Other <-->|MCP Protocol| Tools
+    Tools --> DB
+    Tools --> AI
+    
+    classDef external fill:#ffebee
+    classDef mcp fill:#e3f2fd
+    classDef core fill:#e8f5e8
+    
+    class Claude,Other external
+    class Tools mcp
+    class DB,AI core
+```
+
 ## 🚀 セットアップ
 
 ### 1. Docker Desktopのインストール

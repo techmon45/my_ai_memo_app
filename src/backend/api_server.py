@@ -24,25 +24,40 @@ class MCPServer:
     def start_server(self):
         """MCPサーバーを起動"""
         try:
+            project_root = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
+            server_path = os.path.join(project_root, "server.py")
+            
             self.server_process = subprocess.Popen(
-                [sys.executable, "server.py"],
+                [sys.executable, server_path],
                 stdin=subprocess.PIPE,
                 stdout=subprocess.PIPE,
-                stderr=subprocess.DEVNULL,  # バッファ詰まり防止
+                stderr=subprocess.PIPE,
                 text=True
             )
-            return True
+            
+            # ✅ 実際の起動確認
+            time.sleep(1)  # 起動を待つ
+            
+            # プロセスが生きているかチェック
+            if self.server_process.poll() is not None:
+                return False  # プロセスが既に終了している
+            
+            # 実際に通信テスト
+            try:
+                test_response = self.send_request("ping")
+                return "error" not in test_response
+            except:
+                return False
+                
         except Exception as e:
             print(f"Error starting MCP server: {e}")
             return False
     
-    def send_request(self, method: str, params: list = None) -> Dict[str, Any]:
-        """MCPサーバーにリクエストを送信（タイムアウト付き）"""
+    def send_request(self, method: str, params: list = []) -> Dict[str, Any]:
+        """MCPサーバーにリクエストを送信（デバッグ用）"""
         if not self.server_process:
             if not self.start_server():
                 return {"error": "MCPサーバーの起動に失敗しました"}
-        if params is None:
-            params = []
         try:
             request = {
                 "jsonrpc": "2.0",
@@ -54,18 +69,10 @@ class MCPServer:
             self.server_process.stdin.write(request_str)
             self.server_process.stdin.flush()
             
-            # タイムアウト設定（10秒）
-            start_time = time.time()
-            while time.time() - start_time < 10:
-                # selectでstdoutにデータが来ているか確認（非ブロッキング）
-                ready, _, _ = select.select([self.server_process.stdout], [], [], 0.1)
-                if ready:
-                    response_line = self.server_process.stdout.readline()
-                    if response_line:
-                        response = json.loads(response_line.strip())
-                        return response
-            
-            return {"error": "MCPサーバーからのレスポンスがタイムアウトしました"}
+            # ✅ 実際のレスポンスを受信
+            response_line = self.server_process.stdout.readline()
+            response = json.loads(response_line)
+            return response
         except Exception as e:
             return {"error": f"MCP通信エラー: {str(e)}"}
 
@@ -84,6 +91,10 @@ class SearchQuery(BaseModel):
     query: str
     limit: Optional[int] = 50
 
+# AIプレビュー用リクエストモデル
+class PreviewRequest(BaseModel):
+    content: str
+
 # MCPサーバーインスタンス
 mcp_server = MCPServer()
 
@@ -92,10 +103,15 @@ async def lifespan(app: FastAPI):
     """アプリケーションのライフサイクル管理"""
     # 起動時
     print("AI Memo App API サーバーを起動中...")
-    if mcp_server.start_server():
-        print("MCPサーバーが正常に起動しました")
-    else:
-        print("MCPサーバーの起動に失敗しました")
+    
+    # 一時的にMCPサーバー起動をスキップ（デバッグ用）
+    print("⚠️  MCPサーバーの起動をスキップします（デバッグ用）")
+    
+    # 元のコード（一時的にコメントアウト）
+    # if mcp_server.start_server():
+    #     print("MCPサーバーが正常に起動しました")
+    # else:
+    #     print("MCPサーバーの起動に失敗しました")
     
     yield
     
@@ -165,22 +181,27 @@ async def get_stats():
 
 
 @app.post("/memos")
-async def create_memo(memo: MemoCreate, bg: BackgroundTasks):
-    """メモ作成 → 先に DB 保存、AI はバックグラウンド"""
-    # 1) 先にプレーン保存して ID を返す
-    saved = db_manager.create_memo(
-        title=memo.title,
-        content=memo.content,
-        tags=memo.tags or [],
-        summary=None
-    )
-    # 2) AI 要約 + タグ生成を裏で実行
-    bg.add_task(
-        mcp_server.send_request,
-        "update_memo",        # AI 再計算用ツールを流用
-        [saved["id"], None, saved["content"], saved["tags"]]
-    )
-    return saved
+async def create_memo(memo: MemoCreate):
+    """メモ作成（AI 処理込み）"""
+    try:
+        # AI 処理を直接実行
+        from src.utils.ai_processor import AIProcessor
+        ai_processor = AIProcessor()
+        ai_result = ai_processor.process_memo(memo.content)
+        
+        # AI タグとユーザータグを結合
+        all_tags = list(set((memo.tags or []) + ai_result["tags"]))
+        
+        # DB に保存
+        saved = db_manager.create_memo(
+            title=memo.title,
+            content=memo.content,
+            tags=all_tags,
+            summary=ai_result["summary"]
+        )
+        return saved
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/memos/{memo_id}")
 async def get_memo(memo_id: str):
@@ -195,25 +216,35 @@ async def get_memo(memo_id: str):
 
 @app.put("/memos/{memo_id}")
 async def update_memo(memo_id: str, memo: MemoUpdate):
-    """メモを更新"""
+    """メモを更新（DB 直アクセス）"""
     try:
-        params = [memo_id]
-        if memo.title is not None:
-            params.append(memo.title)
+        # 内容が変更された場合、AIで再処理
+        ai_result = {"summary": None, "tags": []}
+        if memo.content:
+            from src.utils.ai_processor import AIProcessor
+            ai_processor = AIProcessor()
+            ai_result = ai_processor.process_memo(memo.content)
+            
+            # AI タグとユーザータグを結合
+            if memo.tags is None:
+                memo.tags = []
+            all_tags = list(set(memo.tags + ai_result["tags"]))
         else:
-            params.append(None)
-        if memo.content is not None:
-            params.append(memo.content)
-        else:
-            params.append(None)
-        if memo.tags is not None:
-            params.append(memo.tags)
-        else:
-            params.append(None)
-        result = mcp_server.send_request("update_memo", params)
-        if "error" in result:
-            raise HTTPException(status_code=404, detail=result["error"])
-        return result.get("result", result)
+            all_tags = memo.tags
+        
+        # データベースを更新
+        updated_memo = db_manager.update_memo(
+            memo_id=memo_id,
+            title=memo.title,
+            content=memo.content,
+            tags=all_tags,
+            summary=ai_result["summary"] if memo.content else None
+        )
+        
+        if not updated_memo:
+            raise HTTPException(status_code=404, detail="メモが見つかりません")
+        
+        return updated_memo
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -252,6 +283,24 @@ async def get_memos_by_tag(tag_name: str, limit: int = 50):
         return db_manager.get_memos_by_tag(tag_name=tag_name, limit=limit)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+# ---------------- AIプレビューエンドポイント ----------------
+
+@app.post("/ai/preview")
+async def ai_preview(preview: PreviewRequest):
+    """AI による要約・タグ付けプレビュー（直接呼び出し版）"""
+    try:
+        # MCP を経由せず、直接 AIProcessor を使用
+        from src.utils.ai_processor import AIProcessor
+        
+        # AIProcessor の初期化
+        ai_processor = AIProcessor()
+        result = ai_processor.process_memo(preview.content)
+        
+        return result
+    except Exception as e:
+        print(f"AI preview error: {e}")
+        raise HTTPException(status_code=500, detail=f"AI 処理エラー: {str(e)}")
 
 if __name__ == "__main__":
     import uvicorn
